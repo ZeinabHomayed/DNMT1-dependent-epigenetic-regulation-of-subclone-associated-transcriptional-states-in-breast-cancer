@@ -1,0 +1,146 @@
+
+
+library(ggplot2)
+library(dplyr)
+require(DNAcopy)
+library(data.table)
+source("~/readCGH.R")
+source("~/normalize_cgh.R")
+source("~/DNAcopy_to_matrix.R")
+source("~/DNAcopy_mergeLevels.r")
+source("~/calcul_cytoband.R")
+source("~/segment_discretisation.R")
+
+path="Nouveau dossier/"
+rawData = readCghAgilent(path)
+
+ma = normalize_cgh(rawData)
+
+chrom_name = gsub("chr([0-9XY]+):.*", "\\1", ma$genes[, "SystematicName"])
+chrom_start = as.numeric(gsub(".*:([0-9]+)-.*", "\\1",ma$genes[, "SystematicName"]))
+chrom_stop = as.numeric(gsub(".*-([0-9]+$)","\\1",ma$genes[,"SystematicName"]))
+drop_index = c(which(!chrom_name %in% c(1:22,"X","Y")),which(ma$genes[,"ControlType"] != 0))
+rawData_filtered = rawData[-drop_index,]
+ma_filtered = ma[-drop_index,]
+chrom_name=chrom_name[-drop_index]
+chrom_start=chrom_start[-drop_index]
+chrom_stop=chrom_stop[-drop_index]
+
+duplicate = which(duplicated(rawData_filtered$genes$ProbeName))
+rawData_filtered = rawData_filtered[-duplicate,]
+ma_filtered = ma_filtered[-duplicate,]
+chrom_start=chrom_start[-duplicate]
+chrom_name=chrom_name[-duplicate]
+chrom_stop=chrom_stop[-duplicate]
+
+chrom_name[which(chrom_name=="X")]=23
+chrom_name[which(chrom_name=="Y")]=24
+chrom_name=as.numeric(chrom_name)
+
+cna <- CNA(ma_filtered$M, chrom_name, chrom_start, data.type = "logratio",sampleid=colnames(ma_filtered$M))
+
+segData <- segment(smooth.CNA(cna))
+
+output <- segData$output
+
+output$ID <- recode(output$ID,
+                    "H.H.txt"="Unconverted",
+                    "H.M.txt"="Converted to 2-M2high",
+                    "H.T.txt"="Converted to 1-M2high",
+                    "MCAM.txt"="2-M2high",
+                    "MMEhigh.txt"="M2low",
+                    "THY1.txt"="1-M2high")
+seg_17 <- output[output$chrom == 17,]
+seg_17$ID <- factor(seg_17$ID, levels = c("1-M2high", "2-M2high", "M2low", 
+                                           "Unconverted", "Converted to 2-M2high", "Converted to 1-M2high"))
+
+
+cna_plot <- cna
+colnames(cna_plot) <- c("chrom", "maploc", "Unconverted", "Converted to 2-M2high", "Converted to 1-M2high", "2-M2high", "M2low", "1-M2high")
+data_17 <- cna_plot[cna_plot$chrom==17,]
+data_17 <- melt.data.table(as.data.table(data_17), id.vars = c("chrom", "maploc"), measure.vars = c("Unconverted", "Converted to 2-M2high", "Converted to 1-M2high",
+                                                                                                    "2-M2high", "M2low", "1-M2high"))
+colnames(data_17)[3] <- "ID"
+data_17$ID <- factor(data_17$ID, levels = c("1-M2high", "2-M2high", "M2low", 
+                                            "Unconverted", "Converted to 2-M2high", "Converted to 1-M2high"))
+
+ggplot(seg_17, mapping = aes(x=maploc, y=value)) +
+  geom_point(data=data_17, mapping = aes(x=maploc, y=value), size=0.1, alpha=0.1) +
+  geom_segment(aes(x=loc.start, xend=loc.end, y=seg.mean, yend=seg.mean, color = ID), linewidth = 1) +
+  facet_grid(ID~chrom, space = "free", scales = "free_x") + 
+  theme_classic() +
+  theme(panel.spacing = unit(0, 'mm'), 
+        panel.border = element_rect(size = 0.5, color = 'grey10', fill = NA),
+        legend.position = "none",
+        axis.title = element_text(size = 12), axis.text = element_text(size = 10),
+        strip.background = element_blank(), strip.text = element_text(size=10),
+        axis.line = element_line(size = .8), axis.ticks = element_line(size = .8),
+        plot.title = element_text(size = 12)) + 
+  ylim(c(-2, 2)) + 
+  xlab('Genome position (bp)') +
+  ylab("Log2 Ratio") +
+  ggtitle("Chromosome 17") +
+  geom_hline(yintercept = c(-1, 0, 1), linetype = "dashed")
+
+ggsave("CGH chr17 of ctrl and treated samples with segmentation.png", dpi = 600, height = 10, width = 5)
+
+
+
+
+seg_17_ctrl <- seg_17[seg_17$ID %in% c("M2low", "1-M2high", "2-M2high"),]
+data_17_ctrl <- data_17[data_17$ID %in% c("M2low", "1-M2high", "2-M2high"),]
+
+ggplot(seg_17_ctrl, mapping = aes(x=maploc, y=value)) +
+  geom_point(data=data_17_ctrl, mapping = aes(x=maploc, y=value), size=0.2, alpha=0.1) +
+  geom_segment(aes(x=loc.start, xend=loc.end, y=seg.mean, yend=seg.mean, color = ID), linewidth = 1) +
+  facet_grid(ID~., space = "free", scales = "free_x") + 
+  theme_classic() +
+  theme(panel.spacing = unit(0, 'mm'), 
+        panel.border = element_rect(size = 0.5, color = 'grey10', fill = NA),
+        legend.position = "none",
+        axis.title = element_text(size = 12), axis.text = element_text(size = 10),
+        strip.background = element_blank(), strip.text = element_text(size=10),
+        axis.line = element_line(size = .8), axis.ticks = element_line(size = .8),
+        plot.title = element_text(size = 12)) + 
+  ylim(c(-2, 2)) + 
+  xlab('Genome position (bp)') +
+  ylab("Log2 Ratio") +
+  ggtitle("Chromosome 17") +
+  geom_hline(yintercept = 0) +
+  geom_hline(yintercept = c(-1, 1), linetype = "dashed", size=0.5) +
+  scale_color_manual(values = c("#fab6B6","#fc4c4c","#576db1"))
+ggsave("CGH chr17 of ctrl samples with segmentation.png", dpi = 600, height = 6, width = 5)
+
+saveRDS(seg_17_ctrl, "segmentation of chr17 ctrl samples.rds")
+saveRDS(data_17_ctrl, "data of chr17 ctrl samples.rds")
+
+
+
+
+seg_17_5aza <- seg_17[seg_17$ID %in% c("Unconverted", "Converted to 2-M2high", "Converted to 1-M2high"),]
+data_17_5aza <- data_17[data_17$ID %in% c("Unconverted", "Converted to 2-M2high", "Converted to 1-M2high"),]
+
+ggplot(seg_17_5aza, mapping = aes(x=maploc, y=value)) +
+  geom_point(data=data_17_5aza, mapping = aes(x=maploc, y=value), size=0.2, alpha=0.1) +
+  geom_segment(aes(x=loc.start, xend=loc.end, y=seg.mean, yend=seg.mean, color = ID), linewidth = 1) +
+  facet_grid(ID~chrom, space = "free", scales = "free_x") + 
+  theme_classic() +
+  theme(panel.spacing = unit(0, 'mm'), 
+        panel.border = element_rect(size = 0.5, color = 'grey10', fill = NA),
+        legend.position = "none",
+        axis.title = element_text(size = 12), axis.text = element_text(size = 10),
+        strip.background = element_blank(), strip.text = element_text(size=10),
+        axis.line = element_line(size = .8), axis.ticks = element_line(size = .8),
+        plot.title = element_text(size = 12)) + 
+  ylim(c(-2, 2)) + 
+  xlab('Genome position (bp)') +
+  ylab("Log2 Ratio") +
+  ggtitle("Chromosome 17") +
+  geom_hline(yintercept = 0) +
+  geom_hline(yintercept = c(-1, 1), linetype = "dashed", size=0.5) +
+  scale_color_manual(values = c("#576db1","#fab6B6","#fc4c4c"))
+ggsave("CGH chr17 of 5aza samples with segmentation.png", dpi = 600, height = 6, width = 5)
+
+
+saveRDS(seg_17_5aza, "segmentation of chr17 5aza samples.rds")
+saveRDS(data_17_5aza, "data of chr17 5aza samples.rds")
