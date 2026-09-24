@@ -1,0 +1,22 @@
+#Load dependencies
+library(Seurat)
+library(AUCell)
+
+#Load data
+seu <- readRDS("~/seu_SUM159_VF_realignment with v10 subclones.rds")
+scenic <- read.csv("SUM159_reg_score.csv", row.names = 1)
+rownames(scenic) <- gsub("[(+),]", "", rownames(scenic))
+modules <- readRDS("G:/Martin/BRCA scRNA-seq bank/bank subclones/regulon modules pam k=4.rds")
+
+#Compute module score
+module_score <- AUCell_run(exprMat = as.matrix(scenic),
+                           geneSets = modules, aucMaxRank = nrow(scenic))
+module_score <- module_score@assays@data@listData$AUC
+colnames(module_score) <- gsub("\\.", "-", colnames(module_score))
+saveRDS(module_score, "module scores of sum159.rds")
+
+seu <- AddMetaData(seu, metadata = data.frame(t(module_score)))
+
+VlnPlot(seu, c("module_1", "module_2", "module_3", "module_4", "module_5"),
+        group.by = "subclone")
+
