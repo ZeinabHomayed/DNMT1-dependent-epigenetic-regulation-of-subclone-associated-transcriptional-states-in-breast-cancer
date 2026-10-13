@@ -16,7 +16,7 @@ library(presto)
 library(rstatix)
 
 #Open numbat scripts
-dir <- "~/Martin/scRNA-seq/Files to use for scRNA-seq/numbat_scripts"
+dir <- "~/numbat_scripts"
 r_list <- list.files(dir)
 for (i in 1:length(r_list)) {
   source(paste0(dir, "/", r_list[i]))
@@ -289,11 +289,11 @@ plot_exp_roll3 = function(gexp_roll_wide, subclone_label, gtf, lim = 0.8, n_samp
   }
 }
 p <- plot_exp_roll3(gexp_roll_wide = exp_roll$gexp_roll_wide, subclone_label = subclones, gtf = gtf_final, n_sample = 600)
-ggsave('exp_roll_clust_subclones.png', p, width = 8, height = 2, dpi = 200)
+
 
 
 #Compute MPs
-MP <- readRDS("~/Martin/scRNA-seq/Files to use for scRNA-seq/MPs_Tirosh_as_list.rds")
+MP <- readRDS("~/MPs_Tirosh_as_list.rds")
 res <- AUCell_run(exprMat = seu@assays$RNA@counts, geneSets = MP)
 res <- res@assays@data@listData$AUC
 seu[["MP"]] <- CreateAssayObject(data = res)
