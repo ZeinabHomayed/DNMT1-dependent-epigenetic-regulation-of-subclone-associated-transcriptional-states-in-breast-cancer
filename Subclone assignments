@@ -23,7 +23,7 @@ for (i in 1:length(r_list)) {
 }
 
 #Load data
-seu <- readRDS("~/SUM159_VF_realignment_seurat.rds")
+seu <- readRDS("~/seurat_object.rds")
 gtf_final <- readRDS("~/gtf_file_to_inferCNA_with_chr_X_and_Y.rds")
 agg_exp_normal <- readRDS("~/aggregate expression of pal 2021 embo normal cells for inferCNA ref.rds")
 
@@ -289,89 +289,6 @@ plot_exp_roll3 = function(gexp_roll_wide, subclone_label, gtf, lim = 0.8, n_samp
   }
 }
 p <- plot_exp_roll3(gexp_roll_wide = exp_roll$gexp_roll_wide, subclone_label = subclones, gtf = gtf_final, n_sample = 600)
-
-
-
-#Compute MPs
-MP <- readRDS("~/MPs_Tirosh_as_list.rds")
-res <- AUCell_run(exprMat = seu@assays$RNA@counts, geneSets = MP)
-res <- res@assays@data@listData$AUC
-seu[["MP"]] <- CreateAssayObject(data = res)
-
-#Attribute CNA value to seurat object
-cna_mat <- exp_roll$gexp_roll_wide
-non_y_genes <- gtf_arm[gtf_arm$CHROM != 24, "gene"]
-cna_mat <- cna_mat[,colnames(cna_mat) %in% unlist(as.vector(non_y_genes))]
-loc_group <- gtf_arm[match(colnames(cna_mat), gtf_arm$gene), c("gene", "chr_arm")]
-cell_profile_by_chr_arm <- split(data.frame(t(cna_mat)), loc_group$chr_arm)
-cell_by_chr_arm <- lapply(cell_profile_by_chr_arm, colMeans)
-cell_by_chr_arm <- cell_by_chr_arm[mixedsort(names(cell_by_chr_arm))]
-cell_by_chr_arm <- t(do.call("rbind", cell_by_chr_arm))
-seu[["chr_17p"]] <- cell_by_chr_arm[, "17p"]
-
-
-
-#Create signatures for bulk RNA seq scoring
-markers <- wilcoxauc(seu, "seurat_clusters")
-
-
-
-#Compute scores bulk RNA-seq signatures on single cell data
-bulk_sig <- readRDS("~/Martin/RNA-seq/rna_seq_sum159/ctrl bulk rna seq signatures.rds")
-bulk_sig <- lapply(bulk_sig, function(x){rownames(data.frame(x))})
-
-bulk_scores <- AUCell_run(seu@assays$RNA@counts, bulk_sig)
-bulk_scores <- bulk_scores@assays@data@listData$AUC
-
-
-
-
-
-
-
-
-#Mix Coeff for SUM159
-min_nb <- min(table(seu$subclone))
-subclone_meta <- data.frame(cell_id=Cells(seu), subclone=seu$subclone)
-keep_cells <- subclone_meta %>% arrange(sample(1:nrow(subclone_meta))) %>%
-  group_by(subclone) %>% slice_sample(n=min_nb) %>% pull(cell_id)
-
-seu_sub <- subset(seu, cells=keep_cells)
-seu_sub <- SCTransform(seu_sub)
-seu_sub <- RunPCA(seu_sub, npcs=10)
-seu_sub <- FindNeighbors(seu_sub, k.param = 10)
-
-clone <- unique(seu_sub$subclone)
-nn_graph <- seu_sub@graphs[["SCT_nn"]]
-
-scores <- c()
-for (i in 1:length(clone)) {
-  cells_clone <- Cells(seu_sub)[seu_sub$subclone == clone[i]]
-  ##Compute nearest neighbors clone homogeneity (mixing coefficient)
-  sub_nn_graph <- nn_graph[cells_clone,cells_clone]
-  connectivity_homogeneity_score <- median((10-rowSums(sub_nn_graph))/rowSums(sub_nn_graph))/(length(clone)-1)
-  
-  scores <- c(scores, connectivity_homogeneity_score)
-}
-
-
-
-
-
-df <- data.frame(seu@reductions$pca@cell.embeddings[,1:5], subclone=seu$subclone)
-res <- rbind(kruskal_effsize(df, PC_1~subclone),
-             kruskal_effsize(df, PC_2~subclone),
-             kruskal_effsize(df, PC_3~subclone),
-             kruskal_effsize(df, PC_4~subclone),
-             kruskal_effsize(df, PC_5~subclone))
-
-
-
-
-
-
-
-
 
 
 
